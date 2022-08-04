@@ -22,6 +22,11 @@ import org.springframework.data.convert.WritingConverter;
 import java.util.Collection;
 import java.util.Collections;
 
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.time.Duration;
+import java.time.Period;
+
 import static java.util.Arrays.*;
 
 /**
@@ -53,7 +58,7 @@ public class OracleDialect extends AnsiDialect {
 
 	@Override
 	public Collection<Object> getConverters() {
-		return asList(TimestampAtUtcToOffsetDateTimeConverter.INSTANCE, NumberToBooleanConverter.INSTANCE, BooleanToIntegerConverter.INSTANCE);
+		return asList(TimestampAtUtcToOffsetDateTimeConverter.INSTANCE, NumberToBooleanConverter.INSTANCE, BooleanToIntegerConverter.INSTANCE, PeriodToINTERVALYM.INSTANCE, DurationToINTERVALDS.INSTANCE);
 	}
 
 	@ReadingConverter
@@ -72,6 +77,54 @@ public class OracleDialect extends AnsiDialect {
 		@Override
 		public Integer convert(Boolean bool) {
 			return bool ? 1 : 0;
+		}
+	}
+	@WritingConverter
+	enum PeriodToINTERVALYM implements Converter<Period, Object> {
+		INSTANCE;
+
+		@Override
+		public Object convert(Period period) {
+			Object interval = null;
+			if(period == null)
+				return null;
+			if (ClassUtils.isPresent("oracle.sql.INTERVALYM", this.getClass().getClassLoader())) {
+				try {
+					Class<?> intervalym = Class.forName("oracle.sql.INTERVALYM");
+					Method method = intervalym.getDeclaredMethod("toIntervalym", Period.class);
+					interval = method.invoke(null, period);
+				} 
+				catch (ClassNotFoundException | LinkageError |
+						IllegalAccessException | IllegalArgumentException | InvocationTargetException |
+						NoSuchMethodException | SecurityException e) {
+					throw new RuntimeException(e);
+				}
+			}
+			return interval;
+		}
+	}
+	@WritingConverter
+	enum DurationToINTERVALDS implements Converter<Duration, Object> {
+		INSTANCE;
+
+		@Override
+		public Object convert(Duration duration) {
+			Object interval = new Object();
+			if(duration==null)
+				return null;
+			if (ClassUtils.isPresent("oracle.sql.INTERVALDS", this.getClass().getClassLoader())) {
+				try {
+					Class<?> intervalds = Class.forName("oracle.sql.INTERVALDS");
+					Method method = intervalds.getDeclaredMethod("toIntervalds", Duration.class);
+					interval = method.invoke(intervalds.getDeclaredConstructor().newInstance(), duration);
+				} 
+				catch (ClassNotFoundException | IllegalAccessException |
+						IllegalArgumentException | InvocationTargetException |
+						InstantiationException | NoSuchMethodException | SecurityException e) {
+					throw new RuntimeException(e);
+				}
+			}
+			return interval;
 		}
 	}
 }
